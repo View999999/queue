@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🔥 ระบบคิวเตา</title>
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Sarabun',sans-serif;background:#f5f5f0;min-height:100vh;}
+.app{max-width:680px;margin:0 auto;background:white;min-height:100vh;}
+.nav{display:flex;border-bottom:1px solid #e0e0d8;background:white;position:sticky;top:0;z-index:10;}
+.nav-btn{flex:1;padding:13px 4px;font-size:13px;font-weight:500;font-family:'Sarabun',sans-serif;background:white;border:none;border-bottom:2px solid transparent;cursor:pointer;color:#888;transition:all .15s;}
+.nav-btn.active{border-bottom:2px solid #0F6E56;color:#0F6E56;}
+.nav-btn i{display:block;font-size:20px;margin-bottom:2px;}
+.page{display:none;padding:1rem;}
+.page.active{display:block;}
+
+/* MAP */
+.map-wrap{background:#f5f5f0;border-radius:12px;padding:1rem;}
+.zone-lbl{font-size:12px;color:#aaa;margin-bottom:8px;margin-top:12px;font-weight:500;letter-spacing:.04em;}
+.zone-lbl:first-child{margin-top:0;}
+.tbl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(70px,1fr));gap:8px;}
+.tbl-btn{position:relative;padding:12px 4px 8px;border-radius:8px;border:1.5px solid #e0e0d8;background:white;cursor:pointer;text-align:center;transition:all .18s;font-family:'Sarabun',sans-serif;}
+.tbl-btn:hover{border-color:#1D9E75;transform:scale(1.04);}
+.tbl-btn.ordered{border-color:#1D9E75;background:#E1F5EE;}
+.tbl-btn.inqueue{border-color:#EF9F27;background:#FAEEDA;}
+.tbl-btn.late{border-color:#E24B4A;background:#FCEBEB;}
+.tbl-num{font-size:16px;font-weight:500;color:#222;}
+.tbl-btn.ordered .tbl-num{color:#085041;}
+.tbl-btn.inqueue .tbl-num{color:#633806;}
+.tbl-btn.late .tbl-num{color:#791F1F;}
+.tbl-sub{font-size:11px;color:#aaa;margin-top:2px;}
+.tbl-btn.ordered .tbl-sub{color:#0F6E56;}
+.tbl-btn.inqueue .tbl-sub{color:#854F0B;}
+.tbl-btn.late .tbl-sub{color:#A32D2D;}
+.dot{width:7px;height:7px;border-radius:50%;position:absolute;top:5px;right:5px;}
+.dot-g{background:#1D9E75;}.dot-a{background:#EF9F27;}.dot-r{background:#E24B4A;}
+.legend{display:flex;flex-wrap:wrap;gap:12px;margin-top:12px;font-size:12px;color:#888;}
+.leg-i{display:flex;align-items:center;gap:5px;}
+.leg-d{width:8px;height:8px;border-radius:50%;}
+
+/* QUEUE */
+.snd-bar{display:flex;align-items:center;gap:10px;background:#f5f5f0;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:13px;color:#666;}
+.snd-bar label.txt{flex:1;}
+.toggle{position:relative;width:40px;height:22px;cursor:pointer;flex-shrink:0;}
+.toggle input{opacity:0;width:0;height:0;}
+.tog-sl{position:absolute;inset:0;background:#ccc;border-radius:99px;transition:.25s;}
+.tog-sl:before{content:'';position:absolute;width:18px;height:18px;left:2px;top:2px;background:white;border-radius:50%;transition:.25s;}
+input:checked+.tog-sl{background:#1D9E75;}
+input:checked+.tog-sl:before{transform:translateX(18px);}
+.stats-row{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;}
+.stat-c{background:#f5f5f0;border-radius:8px;padding:10px;text-align:center;}
+.stat-v{font-size:22px;font-weight:500;color:#222;}
+.stat-l{font-size:12px;color:#888;margin-top:2px;}
+.q-list{display:flex;flex-direction:column;gap:8px;}
+.q-card{background:white;border:1px solid #e0e0d8;border-radius:12px;padding:12px 14px;cursor:pointer;transition:all .18s;}
+.q-card:hover{border-color:#1D9E75;}
+.q-card.first{border:1.5px solid #0F6E56;background:#E1F5EE;}
+.q-card.warn{border:1.5px solid #EF9F27;background:#FAEEDA;}
+.q-card.late{border:1.5px solid #E24B4A;background:#FCEBEB;}
+.q-top{display:flex;align-items:center;gap:10px;}
+.q-num{font-size:20px;font-weight:500;color:#222;min-width:34px;}
+.q-card.first .q-num{color:#085041;}
+.q-card.warn .q-num{color:#633806;}
+.q-card.late .q-num{color:#791F1F;}
+.q-inf{flex:1;}
+.q-tbl{font-size:15px;font-weight:500;color:#222;}
+.q-card.first .q-tbl{color:#085041;}
+.q-card.warn .q-tbl{color:#633806;}
+.q-card.late .q-tbl{color:#791F1F;}
+.q-stv{font-size:13px;color:#888;margin-top:2px;}
+.q-timer{font-size:12px;font-weight:500;margin-top:3px;}
+.badge{font-size:11px;padding:2px 8px;border-radius:99px;margin-left:6px;vertical-align:middle;}
+.badge-next{background:#0F6E56;color:white;}
+.badge-late{background:#E24B4A;color:white;}
+.tap-hint{font-size:12px;color:#aaa;text-align:center;margin-top:6px;}
+.empty-s{text-align:center;padding:3rem 1rem;color:#aaa;font-size:14px;}
+.chev{font-size:18px;color:#ccc;}
+
+/* SETTINGS */
+.set-section{margin-bottom:1.75rem;}
+.set-title{font-size:15px;font-weight:500;color:#222;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid #e8e8e0;}
+.set-row{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
+.set-row label{font-size:13px;color:#666;min-width:140px;}
+.zone-block{background:#f5f5f0;border-radius:8px;padding:10px 12px;margin-bottom:8px;}
+.zone-head{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
+.tbl-tags{display:flex;flex-wrap:wrap;gap:6px;}
+.tbl-tag{display:flex;align-items:center;gap:4px;background:white;border:1px solid #e0e0d8;border-radius:6px;padding:4px 10px;font-size:13px;color:#333;}
+.tbl-tag button{background:none;border:none;cursor:pointer;color:#ccc;font-size:15px;line-height:1;padding:0 0 0 2px;}
+.tbl-tag button:hover{color:#E24B4A;}
+.stv-row{display:flex;align-items:center;gap:6px;margin-bottom:6px;}
+.stv-emoji-inp{width:44px;text-align:center;font-size:16px;}
+.add-row{margin-top:8px;display:flex;gap:6px;align-items:center;}
+
+/* INPUTS & BUTTONS */
+input[type=text],input[type=number]{height:36px;padding:0 10px;border:1px solid #ddd;border-radius:6px;font-size:14px;font-family:'Sarabun',sans-serif;background:white;color:#222;outline:none;transition:border .15s;}
+input[type=text]:focus,input[type=number]:focus{border-color:#1D9E75;}
+button.ic-btn{padding:7px 12px;font-size:13px;font-family:'Sarabun',sans-serif;background:white;border:1px solid #ddd;border-radius:6px;cursor:pointer;color:#555;transition:all .15s;}
+button.ic-btn:hover{background:#f5f5f0;}
+button.ic-btn.danger{color:#A32D2D;border-color:#F09595;}
+button.ic-btn.danger:hover{background:#FCEBEB;}
+button.ic-btn.add{color:#085041;border-color:#5DCAA5;}
+button.ic-btn.add:hover{background:#E1F5EE;}
+
+/* OVERLAY */
+.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:100;align-items:center;justify-content:center;padding:1rem;}
+.overlay.open{display:flex;}
+.popup{background:white;border-radius:16px;padding:1.25rem;width:100%;max-width:320px;position:relative;}
+.pop-title{font-size:18px;font-weight:500;color:#222;margin-bottom:3px;}
+.pop-sub{font-size:13px;color:#888;margin-bottom:14px;}
+.close-x{position:absolute;top:12px;right:14px;background:none;border:none;font-size:22px;cursor:pointer;color:#aaa;line-height:1;}
+.pop-existing{margin-bottom:12px;padding:10px 12px;background:#f5f5f0;border-radius:8px;font-size:13px;color:#666;line-height:1.7;}
+.stv-pick{display:flex;align-items:center;gap:8px;margin-bottom:10px;}
+.stv-pick label{flex:1;font-size:14px;color:#333;}
+.stv-stepper{display:flex;align-items:center;gap:0;border:1px solid #ddd;border-radius:8px;overflow:hidden;}
+.stv-stepper button{width:36px;height:36px;border:none;background:#f5f5f0;font-size:18px;cursor:pointer;color:#555;transition:background .12s;flex-shrink:0;font-family:'Sarabun',sans-serif;line-height:1;}
+.stv-stepper button:hover{background:#e0e0d8;}
+.stv-stepper button:active{background:#ccc;}
+.stv-stepper span{width:40px;text-align:center;font-size:16px;font-weight:500;color:#222;user-select:none;}
+.pop-btn{width:100%;margin-top:6px;padding:11px;font-size:15px;font-weight:500;font-family:'Sarabun',sans-serif;border:none;border-radius:8px;cursor:pointer;transition:opacity .15s;}
+.btn-g{background:#1D9E75;color:white;}.btn-g:hover{opacity:.88;}
+.btn-grey{background:#f0f0eb;color:#666;border:1px solid #ddd;}
+.done-icon{text-align:center;font-size:40px;margin-bottom:10px;}
+.done-det{background:#f5f5f0;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:14px;color:#333;line-height:1.9;}
+.save-ok{font-size:12px;color:#0F6E56;margin-left:8px;display:none;}
+</style>
+</head>
+<body>
+<div class="app">
+<div class="nav">
+  <button class="nav-btn active" onclick="switchPage('map')">
+    <i>🍽️</i>แผนผังโต๊ะ
+  </button>
+  <button class="nav-btn" onclick="switchPage('queue')">
+    <i>🔥</i>คิวเตา
+  </button>
+  <button class="nav-btn" onclick="switchPage('settings')">
+    <i>⚙️</i>ตั้งค่า
+  </button>
+</div>
+
+<!-- PAGE MAP -->
+<div class="page active" id="page-map">
+  <div class="map-wrap" id="tableMap"></div>
+</div>
+
+<!-- PAGE QUEUE -->
+<div class="page" id="page-queue">
+  <div class="snd-bar">
+    <span style="font-size:18px">🔔</span>
+    <label class="txt">เสียงแจ้งเตือนเมื่อมีคิวใหม่</label>
+    <label class="toggle"><input type="checkbox" id="soundToggle" checked><span class="tog-sl"></span></label>
+  </div>
+  <div class="stats-row">
+    <div class="stat-c"><div class="stat-v" id="stTotal">0</div><div class="stat-l">ทั้งหมด</div></div>
+    <div class="stat-c"><div class="stat-v" id="stWait">0</div><div class="stat-l">รอยกเตา</div></div>
+    <div class="stat-c"><div class="stat-v" id="stDone">0</div><div class="stat-l">เสร็จแล้ว</div></div>
+  </div>
+  <div class="q-list" id="queueList"></div>
+</div>
+
+<!-- PAGE SETTINGS -->
+<div class="page" id="page-settings">
+  <div class="set-section">
+    <div class="set-title">⏱️ เวลาแจ้งเตือนช้า</div>
+    <div class="set-row">
+      <label>เตือนสีส้ม (นาที)</label>
+      <input type="number" id="warnMin" min="1" max="60" value="7" style="width:70px;">
+    </div>
+    <div class="set-row">
+      <label>เตือนสีแดง (นาที)</label>
+      <input type="number" id="lateMin" min="1" max="60" value="12" style="width:70px;">
+    </div>
+    <button class="ic-btn" onclick="saveTimeSetting()">✓ บันทึก</button>
+    <span class="save-ok" id="saveOk">บันทึกแล้ว ✓</span>
+  </div>
+  <div class="set-section">
+    <div class="set-title">🪑 จัดการโต๊ะและโซน</div>
+    <div id="zoneList"></div>
+    <button class="ic-btn add" onclick="addZone()" style="margin-top:4px;">+ เพิ่มโซนใหม่</button>
+  </div>
+  <div class="set-section">
+    <div class="set-title">🍳 ประเภทเตา</div>
+    <div id="stoveList"></div>
+    <button class="ic-btn add" onclick="addStove()" style="margin-top:4px;">+ เพิ่มประเภทเตา</button>
+  </div>
+</div>
+</div>
+
+<!-- ORDER POPUP -->
+<div class="overlay" id="orderOverlay">
+  <div class="popup">
+    <button class="close-x" onclick="closeOrder()">×</button>
+    <div class="pop-title" id="popTitle">โต๊ะ A1</div>
+    <div class="pop-sub" id="popSub">เลือกเตาและจำนวน</div>
+    <div class="pop-existing" id="popExist" style="display:none"></div>
+    <div id="stoveInputs"></div>
+    <button class="pop-btn btn-g" onclick="submitOrder()">📋 ส่งคิวยกเตา</button>
+    <button class="pop-btn btn-grey" id="clearOrdBtn" style="display:none;margin-top:6px" onclick="clearTableOrder()">🗑️ ยกเลิกออเดอร์</button>
+  </div>
+</div>
+
+<!-- DONE POPUP -->
+<div class="overlay" id="doneOverlay">
+  <div class="popup" style="text-align:center;">
+    <button class="close-x" onclick="closeDone()">×</button>
+    <div class="done-icon">🔥</div>
+    <div class="pop-title" id="doneTitle" style="text-align:left;margin-bottom:3px;"></div>
+    <div class="pop-sub" style="text-align:left;margin-bottom:10px;">รายการเตาที่ต้องยก</div>
+    <div class="done-det" id="doneDetail"></div>
+    <button class="pop-btn btn-g" onclick="markDone()" style="font-size:16px;">✅ เสร็จงาน — ยกเตาแล้ว</button>
+    <button class="pop-btn btn-grey" onclick="closeDone()" style="margin-top:6px;">ยังไม่ยก</button>
+  </div>
+</div>
+
+<!-- PIN OVERLAY -->
+<div class="pin-overlay" id="pinOverlay">
+  <div class="pin-box">
+    <div class="pin-title">🔒 ตั้งค่า</div>
+    <div class="pin-sub">กรอกรหัสผ่านเพื่อเข้าถึง</div>
+    <div class="pin-dots">
+      <div class="pin-dot" id="pd0"></div>
+      <div class="pin-dot" id="pd1"></div>
+      <div class="pin-dot" id="pd2"></div>
+      <div class="pin-dot" id="pd3"></div>
+      <div class="pin-dot" id="pd4"></div>
+      <div class="pin-dot" id="pd5"></div>
+    </div>
+    <div class="pin-grid">
+      <button class="pin-key" onclick="pinPress('1')">1</button>
+      <button class="pin-key" onclick="pinPress('2')">2</button>
+      <button class="pin-key" onclick="pinPress('3')">3</button>
+      <button class="pin-key" onclick="pinPress('4')">4</button>
+      <button class="pin-key" onclick="pinPress('5')">5</button>
+      <button class="pin-key" onclick="pinPress('6')">6</button>
+      <button class="pin-key" onclick="pinPress('7')">7</button>
+      <button class="pin-key" onclick="pinPress('8')">8</button>
+      <button class="pin-key" onclick="pinPress('9')">9</button>
+      <div></div>
+      <button class="pin-key" onclick="pinPress('0')">0</button>
+      <button class="pin-del" onclick="pinDel()">⌫</button>
+    </div>
+    <div class="pin-err" id="pinErr"></div>
+  </div>
+</div>
+
+<script>
+let cfg = {
+  zones: [
+    {name:'โซน A', tables:['A1','A2','A3','A4','A5','A6','A7','A8']},
+    {name:'โซน B', tables:['B1','B2','B3','B4','B5','B6']}
+  ],
+  stoves: [
+    {id:'s0',emoji:'🥩',name:'หมูกระทะ'},
+    {id:'s1',emoji:'🔥',name:'ปิ้งย่าง'},
+    {id:'s2',emoji:'🍲',name:'ชาบู'},
+    {id:'s3',emoji:'🐔',name:'ไก่ย่าง'},
+    {id:'s4',emoji:'🦐',name:'ทะเล'},
+  ],
+  warnMin:7, lateMin:12
+};
+
+let tableOrders={}, queues=[], qCounter=0, doneCount=0;
+let activeTable=null, activeQId=null;
+let audioCtx=null;
+const SETTINGS_PIN='271125';
+let pinBuffer='';
+let pinUnlocked=false;
+
+function playBeep(){
+  try{
+    if(!audioCtx) audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+    [880,1100,880].forEach((freq,i)=>{
+      const o=audioCtx.createOscillator(), g=audioCtx.createGain();
+      o.connect(g); g.connect(audioCtx.destination);
+      o.frequency.value=freq; o.type='sine';
+      const t=audioCtx.currentTime+i*0.13;
+      g.gain.setValueAtTime(0.3,t);
+      g.gain.exponentialRampToValueAtTime(0.001,t+0.1);
+      o.start(t); o.stop(t+0.12);
+    });
+  }catch(e){}
+}
+
+function pad(n){return n<10?'0'+n:''+n;}
+function timeStr(){const d=new Date();return pad(d.getHours())+':'+pad(d.getMinutes());}
+function elapsedMin(ts){return Math.floor((Date.now()-ts)/60000);}
+function elapsedStr(ts){
+  const s=Math.floor((Date.now()-ts)/1000);
+  return Math.floor(s/60)+':'+(s%60<10?'0':'')+s%60;
+}
+
+function switchPage(p){
+  if(p==='settings'&&!pinUnlocked){
+    pinBuffer='';updatePinDots();
+    document.getElementById('pinErr').textContent='';
+    document.getElementById('pinOverlay').classList.add('open');
+    return;
+  }
+  pinUnlocked=false;
+  doSwitchPage(p);
+}
+
+function tableClass(id){
+  const o=tableOrders[id]; if(!o) return '';
+  if(o.inQueue){const m=elapsedMin(o.queuedAt||o.ts); return m>=cfg.lateMin?'late':'inqueue';}
+  return 'ordered';
+}
+
+function renderMap(){
+  let html='';
+  cfg.zones.forEach(z=>{
+    html+=`<div class="zone-lbl">${z.name}</div><div class="tbl-grid">`;
+    z.tables.forEach(id=>{
+      const cls=tableClass(id), o=tableOrders[id];
+      let sub='ว่าง', dot='';
+      if(o&&o.inQueue){const m=elapsedMin(o.queuedAt||o.ts);sub=m+'m';dot=m>=cfg.lateMin?'<span class="dot dot-r"></span>':'<span class="dot dot-a"></span>';}
+      else if(o){sub='สั่งแล้ว';dot='<span class="dot dot-g"></span>';}
+      html+=`<button class="tbl-btn ${cls}" onclick="openOrder('${id}')">${dot}<div class="tbl-num">${id}</div><div class="tbl-sub">${sub}</div></button>`;
+    });
+    html+='</div>';
+  });
+  html+=`<div class="legend">
+    <div class="leg-i"><div class="leg-d" style="background:#1D9E75"></div>สั่งแล้ว</div>
+    <div class="leg-i"><div class="leg-d" style="background:#EF9F27"></div>อยู่ในคิว</div>
+    <div class="leg-i"><div class="leg-d" style="background:#E24B4A"></div>รอนานเกิน</div>
+    <div class="leg-i"><div class="leg-d" style="background:#ccc"></div>ว่าง</div>
+  </div>`;
+  document.getElementById('tableMap').innerHTML=html;
+}
+
+function renderQueue(){
+  document.getElementById('stTotal').textContent=qCounter;
+  document.getElementById('stWait').textContent=queues.length;
+  document.getElementById('stDone').textContent=doneCount;
+  const list=document.getElementById('queueList');
+  if(!queues.length){list.innerHTML='<div class="empty-s">ไม่มีคิว — เด็กเตาพักได้เลย ✓</div>';return;}
+  list.innerHTML=queues.map((q,i)=>{
+    const m=elapsedMin(q.ts), isFirst=i===0;
+    let cls=isFirst?'first':''; if(m>=cfg.lateMin)cls='late'; else if(m>=cfg.warnMin&&!isFirst)cls='warn';
+    const tc=m>=cfg.lateMin?'#A32D2D':m>=cfg.warnMin?'#854F0B':'#aaa';
+    const stoveTxt=q.stoves.map(s=>s.emoji+s.name+' ×'+s.qty).join(' · ');
+    return `<div class="q-card ${cls}" onclick="openDone(${q.id})">
+      <div class="q-top">
+        <div class="q-num">#${q.id}</div>
+        <div class="q-inf">
+          <div class="q-tbl">โต๊ะ ${q.table}${isFirst?'<span class="badge badge-next">ถัดไป</span>':''}${m>=cfg.lateMin?'<span class="badge badge-late">รอนาน!</span>':''}</div>
+          <div class="q-stv">${stoveTxt}</div>
+          <div class="q-timer" style="color:${tc}">⏱ <span id="qt${q.id}">${elapsedStr(q.ts)}</span></div>
+        </div>
+        <span class="chev">›</span>
+      </div>
+      ${isFirst?'<div class="tap-hint">แตะเพื่อกดเสร็จงาน</div>':''}
+    </div>`;
+  }).join('');
+}
+
+function buildStoveInputs(existing){
+  document.getElementById('stoveInputs').innerHTML=cfg.stoves.map(s=>{
+    const qty=(existing&&existing[s.id])||0;
+    return `<div class="stv-pick">
+      <label>${s.emoji} ${s.name}</label>
+      <div class="stv-stepper">
+        <button onclick="stepQty('${s.id}',-1)">−</button>
+        <span id="oi_${s.id}" style="color:${qty>0?'#0F6E56':'#222'};font-weight:${qty>0?600:500}">${qty}</span>
+        <button onclick="stepQty('${s.id}',1)">+</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+function stepQty(sid,delta){
+  const el=document.getElementById('oi_'+sid); if(!el) return;
+  const nv=Math.max(0,Math.min(9,(parseInt(el.textContent)||0)+delta));
+  el.textContent=nv; el.style.color=nv>0?'#0F6E56':'#222'; el.style.fontWeight=nv>0?'600':'500';
+}
+function getStoveQty(sid){const el=document.getElementById('oi_'+sid);return el?parseInt(el.textContent)||0:0;}
+
+function openOrder(tid){
+  activeTable=tid;
+  document.getElementById('popTitle').textContent='โต๊ะ '+tid;
+  const o=tableOrders[tid], ex=document.getElementById('popExist'), cb=document.getElementById('clearOrdBtn');
+  if(o){
+    const qmap={};
+    o.stoves.forEach(s=>{qmap[s.id]=s.qty;});
+    buildStoveInputs(qmap);
+    ex.innerHTML='📋 ออเดอร์เดิม:<br>'+o.stoves.map(s=>s.emoji+s.name+' × '+s.qty).join('<br>')+(o.inQueue?'<br><span style="color:#854F0B;font-weight:500">⚠️ อยู่ในคิวแล้ว</span>':'');
+    ex.style.display='block'; cb.style.display='block';
+    document.getElementById('popSub').textContent='แก้ไขหรือส่งคิวใหม่';
+  } else {
+    buildStoveInputs();
+    ex.style.display='none'; cb.style.display='none';
+    document.getElementById('popSub').textContent='เลือกเตาและจำนวน';
+  }
+  document.getElementById('orderOverlay').classList.add('open');
+}
+function closeOrder(){document.getElementById('orderOverlay').classList.remove('open');}
+
+function submitOrder(){
+  const stoves=cfg.stoves.map(s=>({id:s.id,emoji:s.emoji,name:s.name,qty:getStoveQty(s.id)})).filter(s=>s.qty>0);
+  if(!stoves.length){alert('กรุณาเลือกเตาอย่างน้อย 1 ประเภท');return;}
+  qCounter++;
+  const ts=Date.now();
+  queues.push({id:qCounter,table:activeTable,stoves,ts,time:timeStr()});
+  tableOrders[activeTable]={stoves,inQueue:true,queueId:qCounter,queuedAt:ts,ts};
+  if(document.getElementById('soundToggle').checked) playBeep();
+  closeOrder(); loadCfg(); renderMap(); renderQueue();
+}
+
+function clearTableOrder(){
+  const o=tableOrders[activeTable];
+  if(o){queues=queues.filter(q=>q.id!==o.queueId);delete tableOrders[activeTable];}
+  closeOrder(); renderMap(); renderQueue();
+}
+
+function openDone(qid){
+  activeQId=qid;
+  const q=queues.find(x=>x.id===qid); if(!q) return;
+  document.getElementById('doneTitle').textContent='คิว #'+q.id+' — โต๊ะ '+q.table;
+  document.getElementById('doneDetail').innerHTML=q.stoves.map(s=>'<b>'+s.emoji+s.name+'</b> × '+s.qty).join('<br>')+
+    '<br><span style="font-size:12px;color:#aaa">รอมาแล้ว '+elapsedStr(q.ts)+'</span>';
+  document.getElementById('doneOverlay').classList.add('open');
+}
+function closeDone(){document.getElementById('doneOverlay').classList.remove('open');}
+
+function markDone(){
+  const q=queues.find(x=>x.id===activeQId);
+  if(q){queues=queues.filter(x=>x.id!==activeQId);doneCount++;delete tableOrders[q.table];}
+  closeDone(); renderMap(); renderQueue();
+}
+
+function saveCfg(){try{localStorage.setItem('furnace_cfg',JSON.stringify(cfg));}catch(e){}}
+function loadCfg(){try{const r=localStorage.getItem('furnace_cfg');if(r){const s=JSON.parse(r);Object.assign(cfg,s);}}catch(e){}}
+function saveTimeSetting(){
+  cfg.warnMin=parseInt(document.getElementById('warnMin').value)||7;
+  cfg.lateMin=parseInt(document.getElementById('lateMin').value)||12;
+  saveCfg();
+  const s=document.getElementById('saveOk'); s.style.display='inline';
+  setTimeout(()=>s.style.display='none',2000);
+}
+
+function renderSettings(){
+  const wm=document.getElementById('warnMin'),lm=document.getElementById('lateMin');
+  if(wm)wm.value=cfg.warnMin; if(lm)lm.value=cfg.lateMin;
+  renderZoneSettings(); renderStoveSettings();
+}
+
+function renderZoneSettings(){
+  const zl=document.getElementById('zoneList'); if(!zl) return;
+  zl.innerHTML=cfg.zones.map((z,zi)=>`
+    <div class="zone-block">
+      <div class="zone-head">
+        <input type="text" value="${z.name}" onchange="cfg.zones[${zi}].name=this.value;saveCfg();renderMap();" style="width:100px;">
+        <button class="ic-btn danger" onclick="removeZone(${zi})">🗑️ ลบโซน</button>
+      </div>
+      <div class="tbl-tags">${z.tables.map((t,ti)=>`<div class="tbl-tag">${t}<button onclick="removeTable(${zi},${ti})" title="ลบ">×</button></div>`).join('')}</div>
+      <div class="add-row">
+        <input type="text" id="newt${zi}" placeholder="ชื่อโต๊ะ เช่น A9" style="width:130px;" onkeydown="if(event.key==='Enter')addTable(${zi})">
+        <button class="ic-btn add" onclick="addTable(${zi})">+ เพิ่ม</button>
+      </div>
+    </div>`).join('');
+}
+
+function renderStoveSettings(){
+  const sl=document.getElementById('stoveList'); if(!sl) return;
+  sl.innerHTML=cfg.stoves.map((s,si)=>`
+    <div class="stv-row">
+      <input type="text" class="stv-emoji-inp" value="${s.emoji}" maxlength="2" onchange="cfg.stoves[${si}].emoji=this.value;saveCfg();" style="width:44px;text-align:center;">
+      <input type="text" value="${s.name}" onchange="cfg.stoves[${si}].name=this.value;saveCfg();" style="flex:1;">
+      <button class="ic-btn danger" onclick="removeStove(${si})">🗑️</button>
+    </div>`).join('');
+}
+
+function addZone(){cfg.zones.push({name:'โซนใหม่',tables:[]});saveCfg();renderSettings();renderMap();}
+function removeZone(i){if(confirm('ลบโซนนี้?')){cfg.zones.splice(i,1);saveCfg();renderSettings();renderMap();}}
+function addTable(zi){const inp=document.getElementById('newt'+zi);const v=inp.value.trim();if(!v)return;cfg.zones[zi].tables.push(v);inp.value='';saveCfg();renderSettings();renderMap();}
+function removeTable(zi,ti){cfg.zones[zi].tables.splice(ti,1);saveCfg();renderSettings();renderMap();}
+function addStove(){cfg.stoves.push({id:'s'+Date.now(),emoji:'🍖',name:'เตาใหม่'});saveCfg();renderSettings();}
+function removeStove(i){cfg.stoves.splice(i,1);saveCfg();renderSettings();}
+
+document.querySelectorAll('.overlay').forEach(ov=>{
+  ov.addEventListener('click',e=>{if(e.target===ov){ov.classList.remove('open');}});
+});
+
+renderMap(); renderQueue();
+setInterval(()=>{
+  queues.forEach(q=>{const el=document.getElementById('qt'+q.id);if(el)el.textContent=elapsedStr(q.ts);});
+  const mapActive=document.getElementById('page-map').classList.contains('active');
+  const qActive=document.getElementById('page-queue').classList.contains('active');
+  if(mapActive) renderMap();
+  if(qActive) renderQueue();
+},1000);
+</script>
+</body>
+</html>
