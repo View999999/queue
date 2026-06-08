@@ -254,18 +254,6 @@ const SETTINGS_PIN='271125';
 let pinBuffer='';
 let pinUnlocked=false;
 
-function saveState(){
-  try{
-    localStorage.setItem('furnace_state',JSON.stringify({tableOrders,queues,qCounter,doneCount}));
-  }catch(e){}
-}
-function loadState(){
-  try{
-    const r=localStorage.getItem('furnace_state');
-    if(r){const s=JSON.parse(r);tableOrders=s.tableOrders||{};queues=s.queues||[];qCounter=s.qCounter||0;doneCount=s.doneCount||0;}
-  }catch(e){}
-}
-
 function playBeep(){
   try{
     if(!audioCtx) audioCtx=new(window.AudioContext||window.webkitAudioContext)();
@@ -418,7 +406,7 @@ function openOrder(tid){
 }
 function closeOrder(){document.getElementById('orderOverlay').classList.remove('open');}
 
-function submitOrder(){
+async function submitOrder(){
   const stoves=cfg.stoves.map(s=>({id:s.id,emoji:s.emoji,name:s.name,qty:getStoveQty(s.id)})).filter(s=>s.qty>0);
   if(!stoves.length){alert('กรุณาเลือกเตาอย่างน้อย 1 ประเภท');return;}
   qCounter++;
@@ -426,14 +414,14 @@ function submitOrder(){
   queues.push({id:qCounter,table:activeTable,stoves,ts,time:timeStr()});
   tableOrders[activeTable]={stoves,inQueue:true,queueId:qCounter,queuedAt:ts,ts};
   if(document.getElementById('soundToggle').checked) playBeep();
-  saveState();
+  await saveState();
   closeOrder(); loadCfg(); renderMap(); renderQueue();
 }
 
-function clearTableOrder(){
+async function clearTableOrder(){
   const o=tableOrders[activeTable];
   if(o){queues=queues.filter(q=>q.id!==o.queueId);delete tableOrders[activeTable];}
-  saveState();
+  await saveState();
   closeOrder(); renderMap(); renderQueue();
 }
 
@@ -447,19 +435,41 @@ function openDone(qid){
 }
 function closeDone(){document.getElementById('doneOverlay').classList.remove('open');}
 
-function markDone(){
+async function markDone(){
   const q=queues.find(x=>x.id===activeQId);
   if(q){queues=queues.filter(x=>x.id!==activeQId);doneCount++;delete tableOrders[q.table];}
-  saveState();
+  await saveState();
   closeDone(); renderMap(); renderQueue();
 }
 
-function saveCfg(){try{localStorage.setItem('furnace_cfg',JSON.stringify(cfg));}catch(e){}}
-function loadCfg(){try{const r=localStorage.getItem('furnace_cfg');if(r){const s=JSON.parse(r);Object.assign(cfg,s);}}catch(e){}}
-function saveTimeSetting(){
+async function saveCfg(){
+  const data=JSON.stringify(cfg);
+  try{await window.storage.set('furnace_cfg',data,true);}catch(e){}
+  try{localStorage.setItem('furnace_cfg',data);}catch(e){}
+}
+async function loadCfg(){
+  try{
+    const r=await window.storage.get('furnace_cfg',true);
+    if(r&&r.value){const s=JSON.parse(r.value);Object.assign(cfg,s);return;}
+  }catch(e){}
+  try{const r=localStorage.getItem('furnace_cfg');if(r){const s=JSON.parse(r);Object.assign(cfg,s);}}catch(e){}
+}
+async function saveState(){
+  const data=JSON.stringify({tableOrders,queues,qCounter,doneCount});
+  try{await window.storage.set('furnace_state',data,true);}catch(e){}
+  try{localStorage.setItem('furnace_state',data);}catch(e){}
+}
+async function loadState(){
+  try{
+    const r=await window.storage.get('furnace_state',true);
+    if(r&&r.value){const s=JSON.parse(r.value);tableOrders=s.tableOrders||{};queues=s.queues||[];qCounter=s.qCounter||0;doneCount=s.doneCount||0;return;}
+  }catch(e){}
+  try{const r=localStorage.getItem('furnace_state');if(r){const s=JSON.parse(r);tableOrders=s.tableOrders||{};queues=s.queues||[];qCounter=s.qCounter||0;doneCount=s.doneCount||0;}}catch(e){}
+}
+async function saveTimeSetting(){
   cfg.warnMin=parseInt(document.getElementById('warnMin').value)||7;
   cfg.lateMin=parseInt(document.getElementById('lateMin').value)||12;
-  saveCfg();
+  await saveCfg();
   const s=document.getElementById('saveOk'); s.style.display='inline';
   setTimeout(()=>s.style.display='none',2000);
 }
@@ -475,7 +485,7 @@ function renderZoneSettings(){
   zl.innerHTML=cfg.zones.map((z,zi)=>`
     <div class="zone-block">
       <div class="zone-head">
-        <input type="text" value="${z.name}" onchange="cfg.zones[${zi}].name=this.value;saveCfg();renderMap();" style="width:100px;">
+        <input type="text" value="${z.name}" onchange="cfg.zones[${zi}].name=this.value;saveCfg().then(()=>renderMap());" style="width:100px;">
         <button class="ic-btn danger" onclick="removeZone(${zi})">🗑️ ลบโซน</button>
       </div>
       <div class="tbl-tags">${z.tables.map((t,ti)=>`<div class="tbl-tag">${t}<button onclick="removeTable(${zi},${ti})" title="ลบ">×</button></div>`).join('')}</div>
@@ -496,22 +506,35 @@ function renderStoveSettings(){
     </div>`).join('');
 }
 
-function addZone(){cfg.zones.push({name:'โซนใหม่',tables:[]});saveCfg();renderSettings();renderMap();}
-function removeZone(i){if(confirm('ลบโซนนี้?')){cfg.zones.splice(i,1);saveCfg();renderSettings();renderMap();}}
-function addTable(zi){const inp=document.getElementById('newt'+zi);const v=inp.value.trim();if(!v)return;cfg.zones[zi].tables.push(v);inp.value='';saveCfg();renderSettings();renderMap();}
-function removeTable(zi,ti){cfg.zones[zi].tables.splice(ti,1);saveCfg();renderSettings();renderMap();}
-function addStove(){cfg.stoves.push({id:'s'+Date.now(),emoji:'🍖',name:'เตาใหม่'});saveCfg();renderSettings();}
-function removeStove(i){cfg.stoves.splice(i,1);saveCfg();renderSettings();}
+async function addZone(){cfg.zones.push({name:'โซนใหม่',tables:[]});await saveCfg();renderSettings();renderMap();}
+async function removeZone(i){if(confirm('ลบโซนนี้?')){cfg.zones.splice(i,1);await saveCfg();renderSettings();renderMap();}}
+async function addTable(zi){const inp=document.getElementById('newt'+zi);const v=inp.value.trim();if(!v)return;cfg.zones[zi].tables.push(v);inp.value='';await saveCfg();renderSettings();renderMap();}
+async function removeTable(zi,ti){cfg.zones[zi].tables.splice(ti,1);await saveCfg();renderSettings();renderMap();}
+async function addStove(){cfg.stoves.push({id:'s'+Date.now(),emoji:'🍖',name:'เตาใหม่'});await saveCfg();renderSettings();}
+async function removeStove(i){cfg.stoves.splice(i,1);await saveCfg();renderSettings();}
 
 document.querySelectorAll('.overlay').forEach(ov=>{
   ov.addEventListener('click',e=>{if(e.target===ov){ov.classList.remove('open');}});
 });
 
-loadCfg(); loadState(); renderMap(); renderQueue();
-setInterval(()=>{
+async function init(){
+  await loadCfg();
+  await loadState();
+  renderMap(); renderQueue();
+}
+init();
+
+// sync timer ทุก 1 วินาที (อัปเดต timer) + ทุก 10 วินาที (sync จาก cloud)
+let syncTick=0;
+setInterval(async()=>{
   queues.forEach(q=>{const el=document.getElementById('qt'+q.id);if(el)el.textContent=elapsedStr(q.ts);});
   const mapActive=document.getElementById('page-map').classList.contains('active');
   const qActive=document.getElementById('page-queue').classList.contains('active');
+  syncTick++;
+  if(syncTick%10===0){
+    await loadCfg();
+    await loadState();
+  }
   if(mapActive) renderMap();
   if(qActive) renderQueue();
 },1000);
