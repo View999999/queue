@@ -124,6 +124,23 @@ button.ic-btn.add:hover{background:#E1F5EE;}
 .done-icon{text-align:center;font-size:40px;margin-bottom:10px;}
 .done-det{background:#f5f5f0;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:14px;color:#333;line-height:1.9;}
 .save-ok{font-size:12px;color:#0F6E56;margin-left:8px;display:none;}
+
+/* ===== PIN KEYPAD ===== */
+.pin-overlay{display:none;position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,.55);z-index:9999;align-items:center;justify-content:center;}
+.pin-overlay.open{display:flex;}
+.pin-box{background:white;border-radius:20px;padding:2rem 1.5rem 1.5rem;width:300px;max-width:92vw;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.25);}
+.pin-title{font-size:20px;font-weight:600;color:#222;margin-bottom:4px;}
+.pin-sub{font-size:13px;color:#aaa;margin-bottom:20px;}
+.pin-dots{display:flex;justify-content:center;gap:14px;margin-bottom:22px;}
+.pin-dot{width:15px;height:15px;border-radius:50%;background:#e0e0d8;transition:all .15s;}
+.pin-dot.filled{background:#0F6E56;transform:scale(1.15);}
+.pin-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:8px;}
+.pin-key{padding:18px 0;font-size:22px;font-weight:500;font-family:'Sarabun',sans-serif;background:#f5f5f0;border:none;border-radius:12px;cursor:pointer;color:#222;transition:all .12s;-webkit-tap-highlight-color:transparent;}
+.pin-key:hover{background:#e0e0d8;}
+.pin-key:active{background:#ccc;transform:scale(0.95);}
+.pin-del{padding:18px 0;font-size:20px;font-family:'Sarabun',sans-serif;background:#f5f5f0;border:none;border-radius:12px;cursor:pointer;color:#888;transition:all .12s;}
+.pin-del:active{background:#e0e0d8;transform:scale(0.95);}
+.pin-err{font-size:13px;color:#E24B4A;margin-top:8px;min-height:20px;font-weight:500;}
 </style>
 </head>
 <body>
@@ -214,37 +231,6 @@ button.ic-btn.add:hover{background:#E1F5EE;}
   </div>
 </div>
 
-<!-- PIN OVERLAY -->
-<div class="pin-overlay" id="pinOverlay">
-  <div class="pin-box">
-    <div class="pin-title">🔒 ตั้งค่า</div>
-    <div class="pin-sub">กรอกรหัสผ่านเพื่อเข้าถึง</div>
-    <div class="pin-dots">
-      <div class="pin-dot" id="pd0"></div>
-      <div class="pin-dot" id="pd1"></div>
-      <div class="pin-dot" id="pd2"></div>
-      <div class="pin-dot" id="pd3"></div>
-      <div class="pin-dot" id="pd4"></div>
-      <div class="pin-dot" id="pd5"></div>
-    </div>
-    <div class="pin-grid">
-      <button class="pin-key" onclick="pinPress('1')">1</button>
-      <button class="pin-key" onclick="pinPress('2')">2</button>
-      <button class="pin-key" onclick="pinPress('3')">3</button>
-      <button class="pin-key" onclick="pinPress('4')">4</button>
-      <button class="pin-key" onclick="pinPress('5')">5</button>
-      <button class="pin-key" onclick="pinPress('6')">6</button>
-      <button class="pin-key" onclick="pinPress('7')">7</button>
-      <button class="pin-key" onclick="pinPress('8')">8</button>
-      <button class="pin-key" onclick="pinPress('9')">9</button>
-      <div></div>
-      <button class="pin-key" onclick="pinPress('0')">0</button>
-      <button class="pin-del" onclick="pinDel()">⌫</button>
-    </div>
-    <div class="pin-err" id="pinErr"></div>
-  </div>
-</div>
-
 <script>
 let cfg = {
   zones: [
@@ -283,6 +269,30 @@ function playBeep(){
   }catch(e){}
 }
 
+function pinPress(d){
+  if(pinBuffer.length>=6) return;
+  pinBuffer+=d; updatePinDots();
+  if(pinBuffer.length===6){
+    if(pinBuffer===SETTINGS_PIN){
+      pinUnlocked=true;
+      document.getElementById('pinOverlay').classList.remove('open');
+      pinBuffer=''; updatePinDots();
+      doSwitchPage('settings');
+    } else {
+      document.getElementById('pinErr').textContent='รหัสไม่ถูกต้อง ลองใหม่';
+      setTimeout(()=>{pinBuffer='';updatePinDots();document.getElementById('pinErr').textContent='';},900);
+    }
+  }
+}
+function pinDel(){pinBuffer=pinBuffer.slice(0,-1);updatePinDots();document.getElementById('pinErr').textContent='';}
+function updatePinDots(){for(let i=0;i<6;i++){const d=document.getElementById('pd'+i);if(d)d.className='pin-dot'+(i<pinBuffer.length?' filled':'');}}
+function doSwitchPage(p){
+  document.querySelectorAll('.page').forEach(el=>el.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(el=>el.classList.remove('active'));
+  document.getElementById('page-'+p).classList.add('active');
+  document.querySelectorAll('.nav-btn')[{map:0,queue:1,settings:2}[p]].classList.add('active');
+  if(p==='settings') renderSettings();
+}
 function pad(n){return n<10?'0'+n:''+n;}
 function timeStr(){const d=new Date();return pad(d.getHours())+':'+pad(d.getMinutes());}
 function elapsedMin(ts){return Math.floor((Date.now()-ts)/60000);}
@@ -491,5 +501,36 @@ setInterval(()=>{
   if(qActive) renderQueue();
 },1000);
 </script>
+<!-- PIN OVERLAY -->
+<div class="pin-overlay" id="pinOverlay">
+  <div class="pin-box">
+    <div class="pin-title">🔒 ตั้งค่า</div>
+    <div class="pin-sub">กรอกรหัสผ่านเพื่อเข้าถึง</div>
+    <div class="pin-dots">
+      <div class="pin-dot" id="pd0"></div>
+      <div class="pin-dot" id="pd1"></div>
+      <div class="pin-dot" id="pd2"></div>
+      <div class="pin-dot" id="pd3"></div>
+      <div class="pin-dot" id="pd4"></div>
+      <div class="pin-dot" id="pd5"></div>
+    </div>
+    <div class="pin-grid">
+      <button class="pin-key" onclick="pinPress('1')">1</button>
+      <button class="pin-key" onclick="pinPress('2')">2</button>
+      <button class="pin-key" onclick="pinPress('3')">3</button>
+      <button class="pin-key" onclick="pinPress('4')">4</button>
+      <button class="pin-key" onclick="pinPress('5')">5</button>
+      <button class="pin-key" onclick="pinPress('6')">6</button>
+      <button class="pin-key" onclick="pinPress('7')">7</button>
+      <button class="pin-key" onclick="pinPress('8')">8</button>
+      <button class="pin-key" onclick="pinPress('9')">9</button>
+      <div></div>
+      <button class="pin-key" onclick="pinPress('0')">0</button>
+      <button class="pin-del" onclick="pinDel()">⌫</button>
+    </div>
+    <div class="pin-err" id="pinErr"></div>
+  </div>
+</div>
+
 </body>
 </html>
