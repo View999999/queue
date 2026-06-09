@@ -580,55 +580,80 @@ async function markDone(){
     knownQueueIds.delete(activeQId);
     doneCount++;
     delete tableOrders[q.table];
+    logDone(q); // บันทึก log ลง Google Sheets
   }
   await saveState();
   closeDone(); renderMap(); renderQueue();
 }
 
-// ---- STORAGE ----
+// ---- STORAGE (Google Sheets as primary, localStorage as fallback) ----
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbySjMxlziSUrSAkaWHxQ-yudhzxZ1xklBvQ8InfwvNWwGHHPx67GTI1koyCs5u0HsvcJA/exec';
+
+async function gasGet(){
+  const r=await fetch(GAS_URL+'?action=getState&t='+Date.now());
+  const text=await r.text();
+  return text&&text!=='{}'?JSON.parse(text):null;
+}
+async function gasPost(action,data){
+  await fetch(GAS_URL,{
+    method:'POST',
+    body:JSON.stringify({action,data}),
+    headers:{'Content-Type':'text/plain'}
+  });
+}
+
 async function saveCfg(){
   const data=JSON.stringify(cfg);
-  try{await window.storage.set('furnace_cfg',data,true);}catch(e){}
+  // cfg เก็บใน localStorage เพียงพอ (เปลี่ยนไม่บ่อย)
   try{localStorage.setItem('furnace_cfg',data);}catch(e){}
 }
 
 async function loadCfgFromCloud(){
-  try{
-    const r=await window.storage.get('furnace_cfg',true);
-    if(r&&r.value){const s=JSON.parse(r.value);Object.assign(cfg,s);return true;}
-  }catch(e){}
   try{const r=localStorage.getItem('furnace_cfg');if(r){const s=JSON.parse(r);Object.assign(cfg,s);return true;}}catch(e){}
   return false;
 }
 
 async function saveState(){
-  const data=JSON.stringify({tableOrders,queues,qCounter,doneCount});
-  try{await window.storage.set('furnace_state',data,true);}catch(e){}
-  try{localStorage.setItem('furnace_state',data);}catch(e){}
+  const data={tableOrders,queues,qCounter,doneCount};
+  // บันทึก localStorage ก่อนเสมอ (เร็ว)
+  try{localStorage.setItem('furnace_state',JSON.stringify(data));}catch(e){}
+  // บันทึก Google Sheets (async ไม่รอ)
+  try{gasPost('setState',data);}catch(e){}
 }
 
-// syncFromCloud: โหลดข้อมูลจาก cloud และตรวจจับคิวใหม่จากเครื่องอื่น
+// บันทึก log ลง Sheet เมื่อยกเตาเสร็จ
+async function logDone(q){
+  try{
+    const waitMin=Math.floor((Date.now()-q.ts)/60000);
+    const stoveTxt=q.stoves.map(s=>s.emoji+s.name+' ×'+s.qty).join(', ');
+    await gasPost('addLog',{
+      table: q.table,
+      queueId: q.id,
+      stoves: stoveTxt,
+      status: 'ยกเตาแล้ว',
+      waitMin: waitMin
+    });
+  }catch(e){}
+}
+
+// syncFromCloud: โหลดจาก Google Sheets → ตรวจคิวใหม่ → แจ้งเตือน
 async function syncFromCloud(){
   if(isSyncing) return;
   isSyncing=true;
   setSyncStatus('syncing');
   try{
-    // โหลด config
     await loadCfgFromCloud();
 
-    // โหลด state
+    // โหลดจาก Google Sheets ก่อน
     let newState=null;
-    try{
-      const r=await window.storage.get('furnace_state',true);
-      if(r&&r.value) newState=JSON.parse(r.value);
-    }catch(e){}
+    try{newState=await gasGet();}catch(e){}
+    // fallback localStorage
     if(!newState){
       try{const r=localStorage.getItem('furnace_state');if(r)newState=JSON.parse(r);}catch(e){}
     }
 
     if(newState){
       const incomingQueues=newState.queues||[];
-      const incomingQIds=new Set(incomingQueues.map(q=>q.id));
 
       // ตรวจหาคิวใหม่ที่เครื่องนี้ยังไม่รู้จัก
       const newlyArrivedIds=[];
@@ -639,7 +664,6 @@ async function syncFromCloud(){
         }
       });
 
-      // อัปเดต state
       tableOrders=newState.tableOrders||{};
       queues=incomingQueues;
       qCounter=newState.qCounter||0;
