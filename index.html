@@ -587,7 +587,7 @@ async function markDone(){
 }
 
 // ---- STORAGE (Google Sheets as primary, localStorage as fallback) ----
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbySjMxlziSUrSAkaWHxQ-yudhzxZ1xklBvQ8InfwvNWwGHHPx67GTI1koyCs5u0HsvcJA/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbxI4wFw7nFFIlJVS6reDkqS-vYuXIHPZUm0_LZp6MXEyiIH4ypFBUsstPk8hyW2zqFxbw/exec';
 
 async function gasGet(){
   const r=await fetch(GAS_URL+'?action=getState&t='+Date.now());
@@ -604,11 +604,19 @@ async function gasPost(action,data){
 
 async function saveCfg(){
   const data=JSON.stringify(cfg);
-  // cfg เก็บใน localStorage เพียงพอ (เปลี่ยนไม่บ่อย)
   try{localStorage.setItem('furnace_cfg',data);}catch(e){}
+  // บันทึกลง Google Sheets ด้วย
+  try{gasPost('setConfig',cfg);}catch(e){}
 }
 
 async function loadCfgFromCloud(){
+  // โหลดจาก Google Sheets ก่อน
+  try{
+    const r=await fetch(GAS_URL+'?action=getConfig&t='+Date.now());
+    const text=await r.text();
+    if(text&&text!=='{}'){const s=JSON.parse(text);Object.assign(cfg,s);localStorage.setItem('furnace_cfg',JSON.stringify(cfg));return true;}
+  }catch(e){}
+  // fallback localStorage
   try{const r=localStorage.getItem('furnace_cfg');if(r){const s=JSON.parse(r);Object.assign(cfg,s);return true;}}catch(e){}
   return false;
 }
