@@ -16,16 +16,6 @@ body{font-family:'Sarabun',sans-serif;background:#f5f5f0;min-height:100vh;}
 .page{display:none;padding:1rem;}
 .page.active{display:block;}
 
-/* SYNC STATUS BAR */
-.sync-bar{display:flex;align-items:center;gap:6px;padding:6px 14px;font-size:12px;background:#f0faf5;border-bottom:1px solid #c8ead9;color:#0F6E56;}
-.sync-dot{width:7px;height:7px;border-radius:50%;background:#1D9E75;flex-shrink:0;}
-.sync-dot.pulse{animation:pulse 1.2s ease-in-out infinite;}
-.sync-dot.offline{background:#ccc;animation:none;}
-.sync-dot.syncing{background:#EF9F27;animation:pulse 0.5s ease-in-out infinite;}
-@keyframes pulse{0%,100%{opacity:1;transform:scale(1);}50%{opacity:.4;transform:scale(0.85);}}
-.sync-bar.offline-bar{background:#fafafa;border-bottom-color:#e0e0d8;color:#aaa;}
-.sync-time{margin-left:auto;color:#aaa;font-size:11px;}
-
 /* MAP */
 .map-wrap{background:#f5f5f0;border-radius:12px;padding:1rem;}
 .zone-lbl{font-size:12px;color:#aaa;margin-bottom:8px;margin-top:12px;font-weight:500;letter-spacing:.04em;}
@@ -159,13 +149,6 @@ button.ic-btn.add:hover{background:#E1F5EE;}
 </head>
 <body>
 <div class="app">
-
-<!-- SYNC STATUS BAR -->
-<div class="sync-bar" id="syncBar">
-  <div class="sync-dot pulse" id="syncDot"></div>
-  <span id="syncText">กำลังเชื่อมต่อ...</span>
-  <span class="sync-time" id="syncTime"></span>
-</div>
 
 <div class="nav">
   <button class="nav-btn active" onclick="switchPage('map')">
@@ -311,7 +294,6 @@ let pinUnlocked=false;
 // knownQueueIds = set of queue IDs this device has already seen
 // เพื่อตรวจว่ามีคิวใหม่จากเครื่องอื่นหรือไม่
 let knownQueueIds = new Set();
-let lastSyncOk = false;
 let isSyncing = false;
 
 // ---- AUDIO ----
@@ -345,40 +327,6 @@ function playAlertBeep(){
       o.start(t); o.stop(t+0.14);
     });
   }catch(e){}
-}
-
-// ---- SYNC STATUS UI ----
-function setSyncStatus(status, timeStr){
-  const bar=document.getElementById('syncBar');
-  const dot=document.getElementById('syncDot');
-  const txt=document.getElementById('syncText');
-  const tm=document.getElementById('syncTime');
-  dot.className='sync-dot';
-  bar.className='sync-bar';
-  if(status==='ok'){
-    dot.classList.add('pulse');
-    txt.textContent='เชื่อมต่อแล้ว — ซิงค์อัตโนมัติ';
-    bar.style.background='#f0faf5';
-    bar.style.borderBottomColor='#c8ead9';
-    bar.style.color='#0F6E56';
-    dot.style.background='#1D9E75';
-  } else if(status==='syncing'){
-    dot.classList.add('syncing');
-    txt.textContent='กำลังซิงค์...';
-    bar.style.background='#fffbf0';
-    bar.style.borderBottomColor='#f5dcaa';
-    bar.style.color='#854F0B';
-    dot.style.background='#EF9F27';
-  } else {
-    dot.classList.add('offline');
-    txt.textContent='ไม่มีการเชื่อมต่อ';
-    bar.className='sync-bar offline-bar';
-    bar.style.background='#fafafa';
-    bar.style.borderBottomColor='#e0e0d8';
-    bar.style.color='#aaa';
-    dot.style.background='#ccc';
-  }
-  if(timeStr) tm.textContent='อัปเดต '+timeStr;
 }
 
 // ---- PIN ----
@@ -547,8 +495,11 @@ async function submitOrder(){
   // mark as known immediately (เครื่องนี้เป็นคนส่ง ไม่ต้องเล่นเสียงซ้ำ)
   knownQueueIds.add(qCounter);
   if(document.getElementById('soundToggle').checked) playBeep();
-  await saveState();
-  closeOrder(); renderMap(); renderQueue();
+  // อัปเดต UI ทันทีก่อน แล้ว sync เงียบๆ เบื้องหลัง
+  closeOrder();
+  renderMap();
+  renderQueue();
+  saveState(); // ไม่ await — ทำเบื้องหลัง
 }
 
 async function clearTableOrder(){
@@ -558,7 +509,7 @@ async function clearTableOrder(){
     knownQueueIds.delete(o.queueId);
     delete tableOrders[activeTable];
   }
-  await saveState();
+  saveState(); // ไม่ await
   closeOrder(); renderMap(); renderQueue();
 }
 
@@ -582,12 +533,15 @@ async function markDone(){
     delete tableOrders[q.table];
     logDone(q); // บันทึก log ลง Google Sheets
   }
-  await saveState();
-  closeDone(); renderMap(); renderQueue();
+  // อัปเดต UI ทันที ไม่รอ Sheets
+  closeDone();
+  renderMap();
+  renderQueue();
+  saveState(); // ไม่ await — ทำเบื้องหลัง
 }
 
 // ---- STORAGE (Google Sheets as primary, localStorage as fallback) ----
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbxI4wFw7nFFIlJVS6reDkqS-vYuXIHPZUm0_LZp6MXEyiIH4ypFBUsstPk8hyW2zqFxbw/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbxSOa6FbzN3TvwgUKVuRVVvXYGGjXTYd57kj81tfx1rj-wSK-hzlCcLQRoE5ODQwWqMQA/exec';
 
 async function gasGet(){
   const r=await fetch(GAS_URL+'?action=getState&t='+Date.now());
@@ -621,12 +575,11 @@ async function loadCfgFromCloud(){
   return false;
 }
 
-async function saveState(){
+function saveState(){
   const data={tableOrders,queues,qCounter,doneCount};
-  // บันทึก localStorage ก่อนเสมอ (เร็ว)
   try{localStorage.setItem('furnace_state',JSON.stringify(data));}catch(e){}
-  // บันทึก Google Sheets (async ไม่รอ)
-  try{gasPost('setState',data);}catch(e){}
+  // fire-and-forget ไปยัง Google Sheets ไม่บล็อก UI
+  gasPost('setState',data).catch(()=>{});
 }
 
 // บันทึก log ลง Sheet เมื่อยกเตาเสร็จ
@@ -644,26 +597,18 @@ async function logDone(q){
   }catch(e){}
 }
 
-// syncFromCloud: โหลดจาก Google Sheets → ตรวจคิวใหม่ → แจ้งเตือน
+// syncFromCloud: เงียบๆ เบื้องหลัง ไม่กระทบ UI
 async function syncFromCloud(){
   if(isSyncing) return;
   isSyncing=true;
-  setSyncStatus('syncing');
   try{
-    await loadCfgFromCloud();
-
-    // โหลดจาก Google Sheets ก่อน
     let newState=null;
     try{newState=await gasGet();}catch(e){}
-    // fallback localStorage
     if(!newState){
       try{const r=localStorage.getItem('furnace_state');if(r)newState=JSON.parse(r);}catch(e){}
     }
-
     if(newState){
       const incomingQueues=newState.queues||[];
-
-      // ตรวจหาคิวใหม่ที่เครื่องนี้ยังไม่รู้จัก
       const newlyArrivedIds=[];
       incomingQueues.forEach(q=>{
         if(!knownQueueIds.has(q.id)){
@@ -671,29 +616,17 @@ async function syncFromCloud(){
           knownQueueIds.add(q.id);
         }
       });
-
       tableOrders=newState.tableOrders||{};
       queues=incomingQueues;
       qCounter=newState.qCounter||0;
       doneCount=newState.doneCount||0;
-
-      // ถ้ามีคิวใหม่จากเครื่องอื่น → เล่นเสียง + flash
       if(newlyArrivedIds.length>0){
         const queuePageActive=document.getElementById('page-queue').classList.contains('active');
-        if(queuePageActive && document.getElementById('soundToggle').checked){
-          playAlertBeep();
-        }
+        if(queuePageActive && document.getElementById('soundToggle').checked) playAlertBeep();
         newlyArrivedIds.forEach(id=>flashQueueIds.add(id));
       }
     }
-
-    lastSyncOk=true;
-    const now=new Date();
-    setSyncStatus('ok', pad(now.getHours())+':'+pad(now.getMinutes())+':'+pad(now.getSeconds()));
-  }catch(e){
-    lastSyncOk=false;
-    setSyncStatus('offline');
-  }
+  }catch(e){}
   isSyncing=false;
 }
 
@@ -750,13 +683,14 @@ document.querySelectorAll('.overlay').forEach(ov=>{
 
 // ---- INIT ----
 async function init(){
-  setSyncStatus('syncing');
-  await syncFromCloud();
-  // mark all currently loaded queues as known (ไม่ใช่คิวใหม่สำหรับเครื่องนี้)
+  // โหลด local ก่อน → แสดงผลทันที ไม่รอ Sheets
+  await loadCfgFromCloud();
+  try{const r=localStorage.getItem('furnace_state');if(r){const s=JSON.parse(r);tableOrders=s.tableOrders||{};queues=s.queues||[];qCounter=s.qCounter||0;doneCount=s.doneCount||0;}}catch(e){}
   queues.forEach(q=>knownQueueIds.add(q.id));
-  flashQueueIds.clear();
   renderMap();
   renderQueue();
+  // sync จาก Sheets เบื้องหลัง
+  syncFromCloud();
 }
 init();
 
@@ -776,7 +710,7 @@ setInterval(async()=>{
   // sync frequency: queue page = ทุก 2 วิ, map page = ทุก 5 วิ
   const shouldSync = qActive ? (tickCount%2===0) : (tickCount%5===0);
   if(shouldSync){
-    await syncFromCloud();
+    syncFromCloud(); // ไม่ await — ไม่บล็อก timer loop
   }
 
   if(mapActive) renderMap();
