@@ -16,6 +16,16 @@ body{font-family:'Sarabun',sans-serif;background:#f5f5f0;min-height:100vh;}
 .page{display:none;padding:1rem;}
 .page.active{display:block;}
 
+/* SYNC STATUS BAR */
+.sync-bar{display:flex;align-items:center;gap:6px;padding:6px 14px;font-size:12px;background:#f0faf5;border-bottom:1px solid #c8ead9;color:#0F6E56;}
+.sync-dot{width:7px;height:7px;border-radius:50%;background:#1D9E75;flex-shrink:0;}
+.sync-dot.pulse{animation:pulse 1.2s ease-in-out infinite;}
+.sync-dot.offline{background:#ccc;animation:none;}
+.sync-dot.syncing{background:#EF9F27;animation:pulse 0.5s ease-in-out infinite;}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1);}50%{opacity:.4;transform:scale(0.85);}}
+.sync-bar.offline-bar{background:#fafafa;border-bottom-color:#e0e0d8;color:#aaa;}
+.sync-time{margin-left:auto;color:#aaa;font-size:11px;}
+
 /* MAP */
 .map-wrap{background:#f5f5f0;border-radius:12px;padding:1rem;}
 .zone-lbl{font-size:12px;color:#aaa;margin-bottom:8px;margin-top:12px;font-weight:500;letter-spacing:.04em;}
@@ -59,6 +69,8 @@ input:checked+.tog-sl:before{transform:translateX(18px);}
 .q-card.first{border:1.5px solid #0F6E56;background:#E1F5EE;}
 .q-card.warn{border:1.5px solid #EF9F27;background:#FAEEDA;}
 .q-card.late{border:1.5px solid #E24B4A;background:#FCEBEB;}
+.q-card.new-flash{animation:newFlash 0.6s ease-in-out 3;}
+@keyframes newFlash{0%,100%{background:white;}50%{background:#d4f5e4;}}
 .q-top{display:flex;align-items:center;gap:10px;}
 .q-num{font-size:20px;font-weight:500;color:#222;min-width:34px;}
 .q-card.first .q-num{color:#085041;}
@@ -74,6 +86,8 @@ input:checked+.tog-sl:before{transform:translateX(18px);}
 .badge{font-size:11px;padding:2px 8px;border-radius:99px;margin-left:6px;vertical-align:middle;}
 .badge-next{background:#0F6E56;color:white;}
 .badge-late{background:#E24B4A;color:white;}
+.badge-new{background:#1D9E75;color:white;animation:badgePop .4s ease-out;}
+@keyframes badgePop{0%{transform:scale(0);}70%{transform:scale(1.2);}100%{transform:scale(1);}}
 .tap-hint{font-size:12px;color:#aaa;text-align:center;margin-top:6px;}
 .empty-s{text-align:center;padding:3rem 1rem;color:#aaa;font-size:14px;}
 .chev{font-size:18px;color:#ccc;}
@@ -145,6 +159,14 @@ button.ic-btn.add:hover{background:#E1F5EE;}
 </head>
 <body>
 <div class="app">
+
+<!-- SYNC STATUS BAR -->
+<div class="sync-bar" id="syncBar">
+  <div class="sync-dot pulse" id="syncDot"></div>
+  <span id="syncText">กำลังเชื่อมต่อ...</span>
+  <span class="sync-time" id="syncTime"></span>
+</div>
+
 <div class="nav">
   <button class="nav-btn active" onclick="switchPage('map')">
     <i>🍽️</i>แผนผังโต๊ะ
@@ -231,6 +253,37 @@ button.ic-btn.add:hover{background:#E1F5EE;}
   </div>
 </div>
 
+<!-- PIN OVERLAY -->
+<div class="pin-overlay" id="pinOverlay">
+  <div class="pin-box">
+    <div class="pin-title">🔒 ตั้งค่า</div>
+    <div class="pin-sub">กรอกรหัสผ่านเพื่อเข้าถึง</div>
+    <div class="pin-dots">
+      <div class="pin-dot" id="pd0"></div>
+      <div class="pin-dot" id="pd1"></div>
+      <div class="pin-dot" id="pd2"></div>
+      <div class="pin-dot" id="pd3"></div>
+      <div class="pin-dot" id="pd4"></div>
+      <div class="pin-dot" id="pd5"></div>
+    </div>
+    <div class="pin-grid">
+      <button class="pin-key" onclick="pinPress('1')">1</button>
+      <button class="pin-key" onclick="pinPress('2')">2</button>
+      <button class="pin-key" onclick="pinPress('3')">3</button>
+      <button class="pin-key" onclick="pinPress('4')">4</button>
+      <button class="pin-key" onclick="pinPress('5')">5</button>
+      <button class="pin-key" onclick="pinPress('6')">6</button>
+      <button class="pin-key" onclick="pinPress('7')">7</button>
+      <button class="pin-key" onclick="pinPress('8')">8</button>
+      <button class="pin-key" onclick="pinPress('9')">9</button>
+      <div></div>
+      <button class="pin-key" onclick="pinPress('0')">0</button>
+      <button class="pin-del" onclick="pinDel()">⌫</button>
+    </div>
+    <div class="pin-err" id="pinErr"></div>
+  </div>
+</div>
+
 <script>
 let cfg = {
   zones: [
@@ -254,6 +307,14 @@ const SETTINGS_PIN='271125';
 let pinBuffer='';
 let pinUnlocked=false;
 
+// --- Sync tracking ---
+// knownQueueIds = set of queue IDs this device has already seen
+// เพื่อตรวจว่ามีคิวใหม่จากเครื่องอื่นหรือไม่
+let knownQueueIds = new Set();
+let lastSyncOk = false;
+let isSyncing = false;
+
+// ---- AUDIO ----
 function playBeep(){
   try{
     if(!audioCtx) audioCtx=new(window.AudioContext||window.webkitAudioContext)();
@@ -269,6 +330,58 @@ function playBeep(){
   }catch(e){}
 }
 
+// เสียงแจ้งเตือนคนยกเตา (ดังกว่า/นานกว่า)
+function playAlertBeep(){
+  try{
+    if(!audioCtx) audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+    const pattern=[660,880,1100,880,1100];
+    pattern.forEach((freq,i)=>{
+      const o=audioCtx.createOscillator(), g=audioCtx.createGain();
+      o.connect(g); g.connect(audioCtx.destination);
+      o.frequency.value=freq; o.type='sine';
+      const t=audioCtx.currentTime+i*0.15;
+      g.gain.setValueAtTime(0.4,t);
+      g.gain.exponentialRampToValueAtTime(0.001,t+0.13);
+      o.start(t); o.stop(t+0.14);
+    });
+  }catch(e){}
+}
+
+// ---- SYNC STATUS UI ----
+function setSyncStatus(status, timeStr){
+  const bar=document.getElementById('syncBar');
+  const dot=document.getElementById('syncDot');
+  const txt=document.getElementById('syncText');
+  const tm=document.getElementById('syncTime');
+  dot.className='sync-dot';
+  bar.className='sync-bar';
+  if(status==='ok'){
+    dot.classList.add('pulse');
+    txt.textContent='เชื่อมต่อแล้ว — ซิงค์อัตโนมัติ';
+    bar.style.background='#f0faf5';
+    bar.style.borderBottomColor='#c8ead9';
+    bar.style.color='#0F6E56';
+    dot.style.background='#1D9E75';
+  } else if(status==='syncing'){
+    dot.classList.add('syncing');
+    txt.textContent='กำลังซิงค์...';
+    bar.style.background='#fffbf0';
+    bar.style.borderBottomColor='#f5dcaa';
+    bar.style.color='#854F0B';
+    dot.style.background='#EF9F27';
+  } else {
+    dot.classList.add('offline');
+    txt.textContent='ไม่มีการเชื่อมต่อ';
+    bar.className='sync-bar offline-bar';
+    bar.style.background='#fafafa';
+    bar.style.borderBottomColor='#e0e0d8';
+    bar.style.color='#aaa';
+    dot.style.background='#ccc';
+  }
+  if(timeStr) tm.textContent='อัปเดต '+timeStr;
+}
+
+// ---- PIN ----
 function pinPress(d){
   if(pinBuffer.length>=6) return;
   pinBuffer+=d; updatePinDots();
@@ -286,21 +399,17 @@ function pinPress(d){
 }
 function pinDel(){pinBuffer=pinBuffer.slice(0,-1);updatePinDots();document.getElementById('pinErr').textContent='';}
 function updatePinDots(){for(let i=0;i<6;i++){const d=document.getElementById('pd'+i);if(d)d.className='pin-dot'+(i<pinBuffer.length?' filled':'');}}
+
+// ---- PAGE SWITCH ----
 function doSwitchPage(p){
   document.querySelectorAll('.page').forEach(el=>el.classList.remove('active'));
   document.querySelectorAll('.nav-btn').forEach(el=>el.classList.remove('active'));
   document.getElementById('page-'+p).classList.add('active');
   document.querySelectorAll('.nav-btn')[{map:0,queue:1,settings:2}[p]].classList.add('active');
   if(p==='settings') renderSettings();
+  // Force sync เมื่อเปลี่ยนหน้า
+  syncFromCloud();
 }
-function pad(n){return n<10?'0'+n:''+n;}
-function timeStr(){const d=new Date();return pad(d.getHours())+':'+pad(d.getMinutes());}
-function elapsedMin(ts){return Math.floor((Date.now()-ts)/60000);}
-function elapsedStr(ts){
-  const s=Math.floor((Date.now()-ts)/1000);
-  return Math.floor(s/60)+':'+(s%60<10?'0':'')+s%60;
-}
-
 function switchPage(p){
   if(p==='settings'&&!pinUnlocked){
     pinBuffer='';updatePinDots();
@@ -312,12 +421,21 @@ function switchPage(p){
   doSwitchPage(p);
 }
 
+// ---- HELPERS ----
+function pad(n){return n<10?'0'+n:''+n;}
+function timeStr(){const d=new Date();return pad(d.getHours())+':'+pad(d.getMinutes());}
+function elapsedMin(ts){return Math.floor((Date.now()-ts)/60000);}
+function elapsedStr(ts){
+  const s=Math.floor((Date.now()-ts)/1000);
+  return Math.floor(s/60)+':'+(s%60<10?'0':'')+s%60;
+}
+
+// ---- MAP ----
 function tableClass(id){
   const o=tableOrders[id]; if(!o) return '';
   if(o.inQueue){const m=elapsedMin(o.queuedAt||o.ts); return m>=cfg.lateMin?'late':'inqueue';}
   return 'ordered';
 }
-
 function renderMap(){
   let html='';
   cfg.zones.forEach(z=>{
@@ -340,6 +458,10 @@ function renderMap(){
   document.getElementById('tableMap').innerHTML=html;
 }
 
+// ---- QUEUE ----
+// newQueueIds = IDs ที่เพิ่งได้รับจากการ sync ครั้งนี้ เพื่อทำ flash animation
+let flashQueueIds = new Set();
+
 function renderQueue(){
   document.getElementById('stTotal').textContent=qCounter;
   document.getElementById('stWait').textContent=queues.length;
@@ -349,13 +471,16 @@ function renderQueue(){
   list.innerHTML=queues.map((q,i)=>{
     const m=elapsedMin(q.ts), isFirst=i===0;
     let cls=isFirst?'first':''; if(m>=cfg.lateMin)cls='late'; else if(m>=cfg.warnMin&&!isFirst)cls='warn';
+    const isNew=flashQueueIds.has(q.id);
+    if(isNew) cls+=' new-flash';
     const tc=m>=cfg.lateMin?'#A32D2D':m>=cfg.warnMin?'#854F0B':'#aaa';
     const stoveTxt=q.stoves.map(s=>s.emoji+s.name+' ×'+s.qty).join(' · ');
+    const newBadge=isNew?'<span class="badge badge-new">ใหม่!</span>':'';
     return `<div class="q-card ${cls}" onclick="openDone(${q.id})">
       <div class="q-top">
         <div class="q-num">#${q.id}</div>
         <div class="q-inf">
-          <div class="q-tbl">โต๊ะ ${q.table}${isFirst?'<span class="badge badge-next">ถัดไป</span>':''}${m>=cfg.lateMin?'<span class="badge badge-late">รอนาน!</span>':''}</div>
+          <div class="q-tbl">โต๊ะ ${q.table}${isFirst?'<span class="badge badge-next">ถัดไป</span>':''}${m>=cfg.lateMin?'<span class="badge badge-late">รอนาน!</span>':''}${newBadge}</div>
           <div class="q-stv">${stoveTxt}</div>
           <div class="q-timer" style="color:${tc}">⏱ <span id="qt${q.id}">${elapsedStr(q.ts)}</span></div>
         </div>
@@ -364,8 +489,13 @@ function renderQueue(){
       ${isFirst?'<div class="tap-hint">แตะเพื่อกดเสร็จงาน</div>':''}
     </div>`;
   }).join('');
+  // หลัง render แล้ว clear flash set ออก (animation จะจบใน ~1.8s)
+  if(flashQueueIds.size>0){
+    setTimeout(()=>{flashQueueIds.clear();},2000);
+  }
 }
 
+// ---- ORDER POPUP ----
 function buildStoveInputs(existing){
   document.getElementById('stoveInputs').innerHTML=cfg.stoves.map(s=>{
     const qty=(existing&&existing[s.id])||0;
@@ -411,20 +541,28 @@ async function submitOrder(){
   if(!stoves.length){alert('กรุณาเลือกเตาอย่างน้อย 1 ประเภท');return;}
   qCounter++;
   const ts=Date.now();
-  queues.push({id:qCounter,table:activeTable,stoves,ts,time:timeStr()});
+  const newQ={id:qCounter,table:activeTable,stoves,ts,time:timeStr()};
+  queues.push(newQ);
   tableOrders[activeTable]={stoves,inQueue:true,queueId:qCounter,queuedAt:ts,ts};
+  // mark as known immediately (เครื่องนี้เป็นคนส่ง ไม่ต้องเล่นเสียงซ้ำ)
+  knownQueueIds.add(qCounter);
   if(document.getElementById('soundToggle').checked) playBeep();
-  await saveState();
-  closeOrder(); loadCfg(); renderMap(); renderQueue();
-}
-
-async function clearTableOrder(){
-  const o=tableOrders[activeTable];
-  if(o){queues=queues.filter(q=>q.id!==o.queueId);delete tableOrders[activeTable];}
   await saveState();
   closeOrder(); renderMap(); renderQueue();
 }
 
+async function clearTableOrder(){
+  const o=tableOrders[activeTable];
+  if(o){
+    queues=queues.filter(q=>q.id!==o.queueId);
+    knownQueueIds.delete(o.queueId);
+    delete tableOrders[activeTable];
+  }
+  await saveState();
+  closeOrder(); renderMap(); renderQueue();
+}
+
+// ---- DONE POPUP ----
 function openDone(qid){
   activeQId=qid;
   const q=queues.find(x=>x.id===qid); if(!q) return;
@@ -437,35 +575,96 @@ function closeDone(){document.getElementById('doneOverlay').classList.remove('op
 
 async function markDone(){
   const q=queues.find(x=>x.id===activeQId);
-  if(q){queues=queues.filter(x=>x.id!==activeQId);doneCount++;delete tableOrders[q.table];}
+  if(q){
+    queues=queues.filter(x=>x.id!==activeQId);
+    knownQueueIds.delete(activeQId);
+    doneCount++;
+    delete tableOrders[q.table];
+  }
   await saveState();
   closeDone(); renderMap(); renderQueue();
 }
 
+// ---- STORAGE ----
 async function saveCfg(){
   const data=JSON.stringify(cfg);
   try{await window.storage.set('furnace_cfg',data,true);}catch(e){}
   try{localStorage.setItem('furnace_cfg',data);}catch(e){}
 }
-async function loadCfg(){
+
+async function loadCfgFromCloud(){
   try{
     const r=await window.storage.get('furnace_cfg',true);
-    if(r&&r.value){const s=JSON.parse(r.value);Object.assign(cfg,s);return;}
+    if(r&&r.value){const s=JSON.parse(r.value);Object.assign(cfg,s);return true;}
   }catch(e){}
-  try{const r=localStorage.getItem('furnace_cfg');if(r){const s=JSON.parse(r);Object.assign(cfg,s);}}catch(e){}
+  try{const r=localStorage.getItem('furnace_cfg');if(r){const s=JSON.parse(r);Object.assign(cfg,s);return true;}}catch(e){}
+  return false;
 }
+
 async function saveState(){
   const data=JSON.stringify({tableOrders,queues,qCounter,doneCount});
   try{await window.storage.set('furnace_state',data,true);}catch(e){}
   try{localStorage.setItem('furnace_state',data);}catch(e){}
 }
-async function loadState(){
+
+// syncFromCloud: โหลดข้อมูลจาก cloud และตรวจจับคิวใหม่จากเครื่องอื่น
+async function syncFromCloud(){
+  if(isSyncing) return;
+  isSyncing=true;
+  setSyncStatus('syncing');
   try{
-    const r=await window.storage.get('furnace_state',true);
-    if(r&&r.value){const s=JSON.parse(r.value);tableOrders=s.tableOrders||{};queues=s.queues||[];qCounter=s.qCounter||0;doneCount=s.doneCount||0;return;}
-  }catch(e){}
-  try{const r=localStorage.getItem('furnace_state');if(r){const s=JSON.parse(r);tableOrders=s.tableOrders||{};queues=s.queues||[];qCounter=s.qCounter||0;doneCount=s.doneCount||0;}}catch(e){}
+    // โหลด config
+    await loadCfgFromCloud();
+
+    // โหลด state
+    let newState=null;
+    try{
+      const r=await window.storage.get('furnace_state',true);
+      if(r&&r.value) newState=JSON.parse(r.value);
+    }catch(e){}
+    if(!newState){
+      try{const r=localStorage.getItem('furnace_state');if(r)newState=JSON.parse(r);}catch(e){}
+    }
+
+    if(newState){
+      const incomingQueues=newState.queues||[];
+      const incomingQIds=new Set(incomingQueues.map(q=>q.id));
+
+      // ตรวจหาคิวใหม่ที่เครื่องนี้ยังไม่รู้จัก
+      const newlyArrivedIds=[];
+      incomingQueues.forEach(q=>{
+        if(!knownQueueIds.has(q.id)){
+          newlyArrivedIds.push(q.id);
+          knownQueueIds.add(q.id);
+        }
+      });
+
+      // อัปเดต state
+      tableOrders=newState.tableOrders||{};
+      queues=incomingQueues;
+      qCounter=newState.qCounter||0;
+      doneCount=newState.doneCount||0;
+
+      // ถ้ามีคิวใหม่จากเครื่องอื่น → เล่นเสียง + flash
+      if(newlyArrivedIds.length>0){
+        const queuePageActive=document.getElementById('page-queue').classList.contains('active');
+        if(queuePageActive && document.getElementById('soundToggle').checked){
+          playAlertBeep();
+        }
+        newlyArrivedIds.forEach(id=>flashQueueIds.add(id));
+      }
+    }
+
+    lastSyncOk=true;
+    const now=new Date();
+    setSyncStatus('ok', pad(now.getHours())+':'+pad(now.getMinutes())+':'+pad(now.getSeconds()));
+  }catch(e){
+    lastSyncOk=false;
+    setSyncStatus('offline');
+  }
+  isSyncing=false;
 }
+
 async function saveTimeSetting(){
   cfg.warnMin=parseInt(document.getElementById('warnMin').value)||7;
   cfg.lateMin=parseInt(document.getElementById('lateMin').value)||12;
@@ -474,12 +673,12 @@ async function saveTimeSetting(){
   setTimeout(()=>s.style.display='none',2000);
 }
 
+// ---- SETTINGS RENDER ----
 function renderSettings(){
   const wm=document.getElementById('warnMin'),lm=document.getElementById('lateMin');
   if(wm)wm.value=cfg.warnMin; if(lm)lm.value=cfg.lateMin;
   renderZoneSettings(); renderStoveSettings();
 }
-
 function renderZoneSettings(){
   const zl=document.getElementById('zoneList'); if(!zl) return;
   zl.innerHTML=cfg.zones.map((z,zi)=>`
@@ -495,7 +694,6 @@ function renderZoneSettings(){
       </div>
     </div>`).join('');
 }
-
 function renderStoveSettings(){
   const sl=document.getElementById('stoveList'); if(!sl) return;
   sl.innerHTML=cfg.stoves.map((s,si)=>`
@@ -513,62 +711,45 @@ async function removeTable(zi,ti){cfg.zones[zi].tables.splice(ti,1);await saveCf
 async function addStove(){cfg.stoves.push({id:'s'+Date.now(),emoji:'🍖',name:'เตาใหม่'});await saveCfg();renderSettings();}
 async function removeStove(i){cfg.stoves.splice(i,1);await saveCfg();renderSettings();}
 
+// ---- OVERLAY CLOSE ----
 document.querySelectorAll('.overlay').forEach(ov=>{
   ov.addEventListener('click',e=>{if(e.target===ov){ov.classList.remove('open');}});
 });
 
+// ---- INIT ----
 async function init(){
-  await loadCfg();
-  await loadState();
-  renderMap(); renderQueue();
+  setSyncStatus('syncing');
+  await syncFromCloud();
+  // mark all currently loaded queues as known (ไม่ใช่คิวใหม่สำหรับเครื่องนี้)
+  queues.forEach(q=>knownQueueIds.add(q.id));
+  flashQueueIds.clear();
+  renderMap();
+  renderQueue();
 }
 init();
 
-// sync timer ทุก 1 วินาที (อัปเดต timer) + ทุก 10 วินาที (sync จาก cloud)
-let syncTick=0;
+// ---- TICK ----
+// timer tick: ทุก 1 วินาที อัปเดต elapsed timer
+// sync tick: ทุก 2 วินาที สำหรับหน้าคิวเตา, ทุก 5 วินาที สำหรับหน้าแผนผัง
+let tickCount=0;
 setInterval(async()=>{
+  tickCount++;
+
+  // อัปเดต timer display
   queues.forEach(q=>{const el=document.getElementById('qt'+q.id);if(el)el.textContent=elapsedStr(q.ts);});
+
   const mapActive=document.getElementById('page-map').classList.contains('active');
   const qActive=document.getElementById('page-queue').classList.contains('active');
-  syncTick++;
-  if(syncTick%10===0){
-    await loadCfg();
-    await loadState();
+
+  // sync frequency: queue page = ทุก 2 วิ, map page = ทุก 5 วิ
+  const shouldSync = qActive ? (tickCount%2===0) : (tickCount%5===0);
+  if(shouldSync){
+    await syncFromCloud();
   }
+
   if(mapActive) renderMap();
   if(qActive) renderQueue();
 },1000);
 </script>
-<!-- PIN OVERLAY -->
-<div class="pin-overlay" id="pinOverlay">
-  <div class="pin-box">
-    <div class="pin-title">🔒 ตั้งค่า</div>
-    <div class="pin-sub">กรอกรหัสผ่านเพื่อเข้าถึง</div>
-    <div class="pin-dots">
-      <div class="pin-dot" id="pd0"></div>
-      <div class="pin-dot" id="pd1"></div>
-      <div class="pin-dot" id="pd2"></div>
-      <div class="pin-dot" id="pd3"></div>
-      <div class="pin-dot" id="pd4"></div>
-      <div class="pin-dot" id="pd5"></div>
-    </div>
-    <div class="pin-grid">
-      <button class="pin-key" onclick="pinPress('1')">1</button>
-      <button class="pin-key" onclick="pinPress('2')">2</button>
-      <button class="pin-key" onclick="pinPress('3')">3</button>
-      <button class="pin-key" onclick="pinPress('4')">4</button>
-      <button class="pin-key" onclick="pinPress('5')">5</button>
-      <button class="pin-key" onclick="pinPress('6')">6</button>
-      <button class="pin-key" onclick="pinPress('7')">7</button>
-      <button class="pin-key" onclick="pinPress('8')">8</button>
-      <button class="pin-key" onclick="pinPress('9')">9</button>
-      <div></div>
-      <button class="pin-key" onclick="pinPress('0')">0</button>
-      <button class="pin-del" onclick="pinDel()">⌫</button>
-    </div>
-    <div class="pin-err" id="pinErr"></div>
-  </div>
-</div>
-
 </body>
 </html>
